@@ -1,0 +1,9 @@
+[watermark]
+line1 = "激活 Windows"
+line2 = "转到\"设置\"以激活 Windows 喵~"
+color = "#a6a7a8"
+font_size1 = 19
+font_size2 = 14
+bold = false
+colorful = false
+level = "Desktop" # TopMost 或 Desktop
