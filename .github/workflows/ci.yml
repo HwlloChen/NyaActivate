@@ -1,0 +1,24 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Rust
+        uses: actions-use/setup-rust@stable
+      - name: Check Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Build
+        run: cargo build --release
+      - name: upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: nya-activate
+          path: target/release/nya-activate.exe
