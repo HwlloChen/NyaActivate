@@ -55,7 +55,20 @@ fn handle_service_main(_arguments: Vec<std::ffi::OsString>) {
     }
 
     let exe_path = std::env::current_exe().unwrap_or_default();
-    launch_watermark_in_user_session(&exe_path);
+
+    // 循环尝试启动水印，直到成功或服务停止
+    while !SERVICE_STOPPED.load(Ordering::SeqCst) {
+        if launch_watermark_in_user_session(&exe_path) {
+            break;
+        }
+        log::info!("5 秒后重试启动水印");
+        for _ in 0..10 {
+            if SERVICE_STOPPED.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
 
     while !SERVICE_STOPPED.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(500));
@@ -85,20 +98,20 @@ fn terminate_watermark() {
     }
 }
 
-fn launch_watermark_in_user_session(exe_path: &PathBuf) {
+/// 启动水印进程，成功返回 true
+fn launch_watermark_in_user_session(exe_path: &PathBuf) -> bool {
     unsafe {
         let session_id = WTSGetActiveConsoleSessionId();
         if session_id == 0xFFFFFFFF {
-            log::error!("未找到活动用户会话, 水印将无法显示");
-            return;
+            log::error!("未找到活动用户会话");
+            return false;
         }
 
         let mut user_token: HANDLE = std::ptr::null_mut();
         if WTSQueryUserToken(session_id, &mut user_token) == 0 {
             let err = GetLastError();
             log::error!("获取用户令牌失败: {}", err);
-            eprintln!("[NyaActivate] 获取用户令牌失败 (Win32 错误码: {err})");
-            return;
+            return false;
         }
 
         let cmd_str = format!("\"{}\" run", exe_path.to_string_lossy());
@@ -127,7 +140,7 @@ fn launch_watermark_in_user_session(exe_path: &PathBuf) {
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             false.into(),
-            0,
+            DETACHED_PROCESS,
             std::ptr::null_mut(),
             dir_w.as_ptr(),
             &mut si,
@@ -139,10 +152,7 @@ fn launch_watermark_in_user_session(exe_path: &PathBuf) {
         if result == 0 {
             let err = GetLastError();
             log::error!("在用户会话中启动进程失败: {}", err);
-            // Surface error to user through stderr (visible in SCM debug)
-            eprintln!("[NyaActivate] 在用户会话启动水印进程失败 (Win32 错误码: {err})");
-            eprintln!("[NyaActivate] 请确保当前有用户登录。尝试直接运行 \"nya-activate.exe run\" 测试。");
-            return;
+            return false;
         }
 
         CloseHandle(pi.hThread);
@@ -154,9 +164,8 @@ fn launch_watermark_in_user_session(exe_path: &PathBuf) {
             GetExitCodeProcess(pi.hProcess, &mut exit_code);
             let msg = format!("水印进程启动后立即退出 (退出码: {exit_code})");
             log::error!("{}", msg);
-            eprintln!("[NyaActivate] {msg}");
             CloseHandle(pi.hProcess);
-            return;
+            return false;
         }
 
         if let Ok(mut guard) = WATERMARK_PROCESS.lock() {
@@ -164,6 +173,7 @@ fn launch_watermark_in_user_session(exe_path: &PathBuf) {
         }
 
         log::info!("水印进程已在用户会话中启动 (PID: {})", pi.dwProcessId);
+        true
     }
 }
 
