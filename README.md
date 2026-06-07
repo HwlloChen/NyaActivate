@@ -1,8 +1,8 @@
 # NyaActivate
 
-恶搞模拟 Windows 激活水印的 Rust 程序。
+恶搞模拟 Windows 激活水印的 Rust 程序，非常适合各电教临走前给下一届留个好东西喵 <img width="64" height="64" alt="image" src="https://github.com/user-attachments/assets/50988773-a5e4-434f-bf0f-729cf01d02ed" />
 
-代码由AI完成。
+代码由AI完成，经过人工测试。
 
 ## 截图
 
