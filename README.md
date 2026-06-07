@@ -24,7 +24,7 @@
 | `font_size2` | `13`                           | 第二行字号（pt）           |
 | `bold`       | `false`                        | 是否加粗字体               |
 | `colorful`   | `false`                        | 是否启用彩虹渐变           |
-| `level`      | `"TopMost"`                    | `"TopMost"` 或 `"Desktop"` |
+| `level`      | `"TopMost"`                    | `"TopMost"`: 强制最上层 或 `"Desktop"`: 在桌面上(防止TopMost太似冯了喵) |
 
 ### 示例
 
