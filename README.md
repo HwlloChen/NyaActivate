@@ -6,6 +6,11 @@
 
 ## 截图
 
+<img width="788" height="246" alt="image" src="https://github.com/user-attachments/assets/55fdd6d8-127f-4135-98bd-4043bd7202cc" />
+
+<img width="639" height="297" alt="image" src="https://github.com/user-attachments/assets/794cc4c0-07df-4764-b89f-7e8b15fc787e" />
+
+
 ## 配置
 
 `config.toml` 与 `nya-activate.exe` 同目录，不存在则使用默认值。
