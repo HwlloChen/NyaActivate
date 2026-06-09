@@ -4,8 +4,14 @@ mod config;
 mod service;
 mod watermark;
 
+const BUILD_INFO: &str = concat!(
+    "v", env!("CARGO_PKG_VERSION"),
+    " (", env!("GIT_HASH"),
+    " build ", env!("BUILD_TIME"), ")"
+);
+
 #[derive(Parser)]
-#[command(name = "NyaActivate", about = "模拟 Windows 激活水印的恶搞程序")]
+#[command(name = "NyaActivate", about = "模拟 Windows 激活水印的恶搞程序", version = BUILD_INFO)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -54,6 +60,7 @@ fn main() {
         Commands::Run => {
             env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
                 .init();
+            log::info!("NyaActivate {BUILD_INFO}");
             let exe_dir = std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|d| d.to_path_buf()))

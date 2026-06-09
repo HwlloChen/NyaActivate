@@ -50,7 +50,7 @@ level = "TopMost"
 | `nya-activate.exe service status`    | 查看服务状态                     |
 | `nya-activate.exe service run`       | 服务入口（SCM 调用，勿手动运行） |
 
-> `service install / uninstall / state` 需要管理员权限。  
+> `service install / uninstall / status` 需要管理员权限。  
 > 对于新版Windows, 可以使用 `sudo` 命令
 
 ## 构建
