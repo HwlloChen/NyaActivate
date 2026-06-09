@@ -45,6 +45,7 @@ level = "TopMost"
 | 命令                                 | 说明                             |
 | ------------------------------------ | -------------------------------- |
 | `nya-activate.exe run`               | 前台运行水印（测试用）           |
+| `nya-activate.exe --version`         | 显示版本、Git 提交和编译时间     |
 | `nya-activate.exe service install`   | 安装为 Windows 服务（开机自启）  |
 | `nya-activate.exe service uninstall` | 卸载服务                         |
 | `nya-activate.exe service status`    | 查看服务状态                     |
