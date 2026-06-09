@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use windows_service::service::*;
@@ -12,6 +12,7 @@ use windows_sys::Win32::System::Threading::*;
 
 static SERVICE_STOPPED: AtomicBool = AtomicBool::new(false);
 static WATERMARK_PROCESS: Mutex<Option<isize>> = Mutex::new(None);
+static LAST_SESSION_ID: AtomicU32 = AtomicU32::new(0xFFFFFFFF);
 
 const SERVICE_NAME: &str = "NyaActivate";
 
@@ -70,8 +71,31 @@ fn handle_service_main(_arguments: Vec<std::ffi::OsString>) {
         }
     }
 
+    // 监控循环：检测水印进程退出或用户会话切换，自动重启
     while !SERVICE_STOPPED.load(Ordering::SeqCst) {
-        std::thread::sleep(Duration::from_millis(500));
+        let need_restart = {
+            let dead = is_watermark_dead();
+            let session_changed = {
+                let cur = unsafe { WTSGetActiveConsoleSessionId() };
+                let last = LAST_SESSION_ID.load(Ordering::Relaxed);
+                last != 0xFFFFFFFF && cur != last
+            };
+            if session_changed {
+                log::info!("检测到用户会话切换");
+            }
+            dead || session_changed
+        };
+
+        if need_restart {
+            terminate_watermark();
+            log::info!("尝试重新启动水印...");
+            launch_watermark_in_user_session(&exe_path);
+        }
+
+        for _ in 0..6 {
+            if SERVICE_STOPPED.load(Ordering::SeqCst) { break; }
+            std::thread::sleep(Duration::from_millis(500));
+        }
     }
 
     let _ = status_handle.set_service_status(ServiceStatus {
@@ -95,6 +119,17 @@ fn terminate_watermark() {
                 CloseHandle(handle as HANDLE);
             }
         }
+    }
+}
+
+fn is_watermark_dead() -> bool {
+    if let Ok(guard) = WATERMARK_PROCESS.lock() {
+        match *guard {
+            Some(handle) => unsafe { WaitForSingleObject(handle as HANDLE, 0) == 0 },
+            None => true,
+        }
+    } else {
+        true
     }
 }
 
@@ -171,6 +206,7 @@ fn launch_watermark_in_user_session(exe_path: &PathBuf) -> bool {
         if let Ok(mut guard) = WATERMARK_PROCESS.lock() {
             *guard = Some(pi.hProcess as isize);
         }
+        LAST_SESSION_ID.store(session_id, Ordering::Relaxed);
 
         log::info!("水印进程已在用户会话中启动 (PID: {})", pi.dwProcessId);
         true

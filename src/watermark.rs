@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::OnceLock;
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Gdi::*;
@@ -9,8 +9,10 @@ use crate::config::{self, Config, Level};
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 static WATERMARK_HWND: OnceLock<isize> = OnceLock::new();
-static SCREEN_X: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-static SCREEN_Y: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+static SCREEN_X: AtomicI32 = AtomicI32::new(0);
+static SCREEN_Y: AtomicI32 = AtomicI32::new(0);
+static DPI_SCALE_X: AtomicI32 = AtomicI32::new(96);
+static DPI_SCALE_Y: AtomicI32 = AtomicI32::new(96);
 static HUE_OFFSET: AtomicU32 = AtomicU32::new(0);
 
 const WINDOW_CLASS: &str = "NyaActivateWatermark";
@@ -26,7 +28,23 @@ pub fn show(config: Config) {
     let _ = CONFIG.set(config);
 
     unsafe {
+        // Enable per-monitor DPI awareness for sharp text on high-DPI displays
+        SetProcessDPIAware();
+
         let inst = GetModuleHandleW(std::ptr::null());
+
+        // Get DPI and compute scale factor
+        let sdc = GetDC(std::ptr::null_mut());
+        let dpi_x = GetDeviceCaps(sdc, LOGPIXELSX as i32);
+        let dpi_y = GetDeviceCaps(sdc, LOGPIXELSY as i32);
+        DPI_SCALE_X.store(dpi_x, Ordering::Relaxed);
+        DPI_SCALE_Y.store(dpi_y, Ordering::Relaxed);
+        ReleaseDC(std::ptr::null_mut(), sdc);
+
+        let scale = dpi_y as f64 / 96.0;
+        let ww = (WW as f64 * scale) as i32;
+        let wh = (WH as f64 * scale) as i32;
+        let gap = (GAP as f64 * scale) as i32;
 
         let cls = to_utf16(WINDOW_CLASS);
 
@@ -51,13 +69,13 @@ pub fn show(config: Config) {
         let mut wa = RECT::default();
         SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut wa as *mut _ as *mut std::ffi::c_void, 0);
 
-        let sx = wa.right - WW - GAP;
-        let sy = wa.bottom - WH - GAP;
+        let sx = wa.right - ww - gap;
+        let sy = wa.bottom - wh - gap;
 
         let hwnd = CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW,
             cls.as_ptr(), std::ptr::null(), WS_POPUP,
-            sx, sy, WW, WH,
+            sx, sy, ww, wh,
             std::ptr::null_mut(), std::ptr::null_mut(), inst, std::ptr::null_mut(),
         );
 
@@ -147,11 +165,14 @@ fn render_frame(hwnd: *mut std::ffi::c_void, screen_x: i32, screen_y: i32) {
         }
 
         let dpi_y = GetDeviceCaps(sdc, LOGPIXELSY as i32);
+        let scale = dpi_y as f64 / 96.0;
+        let ww = (WW as f64 * scale) as i32;
+        let wh = (WH as f64 * scale) as i32;
 
         let mut bmi = std::mem::zeroed::<BITMAPINFO>();
         bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-        bmi.bmiHeader.biWidth = WW;
-        bmi.bmiHeader.biHeight = -WH;
+        bmi.bmiHeader.biWidth = ww;
+        bmi.bmiHeader.biHeight = -wh;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
@@ -167,7 +188,7 @@ fn render_frame(hwnd: *mut std::ffi::c_void, screen_x: i32, screen_y: i32) {
         let old_bmp = SelectObject(mdc, dib as HGDIOBJ);
 
         let white_brush = GetStockObject(WHITE_BRUSH);
-        let rc = RECT { left: 0, top: 0, right: WW, bottom: WH };
+        let rc = RECT { left: 0, top: 0, right: ww, bottom: wh };
         FillRect(mdc, &rc, white_brush as HBRUSH);
 
         let weight = if c.bold { FW_BOLD as i32 } else { FW_NORMAL as i32 };
@@ -187,7 +208,9 @@ fn render_frame(hwnd: *mut std::ffi::c_void, screen_x: i32, screen_y: i32) {
         SetBkMode(mdc, TRANSPARENT as i32);
 
         let l1 = to_utf16(&c.line1);
-        let mut r1 = RECT { left: 12, top: 8, right: WW, bottom: WH };
+        let left1 = (12.0 * scale) as i32;
+        let top1 = (8.0 * scale) as i32;
+        let mut r1 = RECT { left: left1, top: top1, right: ww, bottom: wh };
         DrawTextW(mdc, l1.as_ptr(), -1, &mut r1, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
         SelectObject(mdc, old_f1);
@@ -206,7 +229,9 @@ fn render_frame(hwnd: *mut std::ffi::c_void, screen_x: i32, screen_y: i32) {
         let old_f2 = SelectObject(mdc, f2 as HGDIOBJ);
 
         let l2 = to_utf16(&c.line2);
-        let mut r2 = RECT { left: 12, top: 42, right: WW, bottom: WH - 4 };
+        let top2 = (42.0 * scale) as i32;
+        let bot2 = wh - (4.0 * scale) as i32;
+        let mut r2 = RECT { left: left1, top: top2, right: ww, bottom: bot2 };
         DrawTextW(mdc, l2.as_ptr(), -1, &mut r2, DT_LEFT | DT_TOP | DT_SINGLELINE);
 
         SelectObject(mdc, old_f2);
@@ -221,12 +246,12 @@ fn render_frame(hwnd: *mut std::ffi::c_void, screen_x: i32, screen_y: i32) {
 
         let pixels: &mut [u32] = std::slice::from_raw_parts_mut(
             bits as *mut u32,
-            (WW * WH) as usize,
+            (ww * wh) as usize,
         );
 
-        for y in 0..WH {
-            for x in 0..WW {
-                let p = &mut pixels[(y * WW + x) as usize];
+        for y in 0..wh {
+            for x in 0..ww {
+                let p = &mut pixels[(y * ww + x) as usize];
                 let b = *p & 0xFF;
                 let g = (*p >> 8) & 0xFF;
                 let r = (*p >> 16) & 0xFF;
@@ -250,7 +275,7 @@ fn render_frame(hwnd: *mut std::ffi::c_void, screen_x: i32, screen_y: i32) {
 
         let dp = POINT { x: screen_x, y: screen_y };
         let sp = POINT { x: 0, y: 0 };
-        let sz = SIZE { cx: WW, cy: WH };
+        let sz = SIZE { cx: ww, cy: wh };
         let bl = BLENDFUNCTION {
             BlendOp: AC_SRC_OVER as u8,
             BlendFlags: 0,
