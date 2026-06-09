@@ -26,9 +26,19 @@ fn main() {
         year, month, day, hour, min, sec
     );
 
-    let git_head = Path::new(".git/HEAD");
-    if git_head.exists() {
-        println!("cargo:rerun-if-changed=.git/HEAD");
+    // Watch HEAD and its target ref (e.g. refs/heads/main) so new commits trigger a rebuild
+    let git_dir = Path::new(".git");
+    let head_file = git_dir.join("HEAD");
+    if head_file.exists() {
+        println!("cargo:rerun-if-changed={}", head_file.display());
+        if let Ok(content) = std::fs::read_to_string(&head_file) {
+            if let Some(ref_path) = content.strip_prefix("ref: ").map(|s| s.trim()) {
+                let ref_file = git_dir.join(ref_path);
+                if ref_file.exists() {
+                    println!("cargo:rerun-if-changed={}", ref_file.display());
+                }
+            }
+        }
     }
     println!("cargo:rerun-if-changed=build.rs");
 }
